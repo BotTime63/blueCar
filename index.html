@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Media Viewer</title>
+<title>Media Viewer – Load Test</title>
 
 <style>
 body {
@@ -19,16 +19,20 @@ body {
 }
 
 .media-number {
-    font-size: 12px;
+    font-size: 11px;
     opacity: 0.6;
     margin-bottom: 4px;
 }
 
-.media-container img,
-.media-container video {
+.load-method {
+    font-size: 10px;
+    opacity: 0.5;
+    margin-bottom: 6px;
+}
+
+.media-container img {
     max-width: 100%;
     max-height: 70vh;
-    margin-bottom: 5px;
     border-radius: 10px;
 }
 
@@ -51,9 +55,6 @@ button {
     color: white;
     border-radius: 5px;
 }
-button:hover {
-    background-color: #45a049;
-}
 
 .back-btn {
     font-size: 10px;
@@ -61,96 +62,45 @@ button:hover {
     opacity: 0.4;
     background-color: #666;
 }
-.back-btn:hover {
-    opacity: 0.8;
-}
-
-#searchInput {
-    width: 80%;
-    max-width: 420px;
-    padding: 10px;
-    margin: 12px 0;
-    font-size: 16px;
-    border-radius: 6px;
-    border: none;
-    outline: none;
-}
 </style>
 </head>
 
 <body>
 
-<h1>Media Viewer</h1>
-
-<input
-    type="text"
-    id="searchInput"
-    placeholder="Search by URL or number…"
-    oninput="debouncedSearch()"
-/>
+<h1>Media Viewer – Twitter Load Test</h1>
 
 <div id="topControls"></div>
 <div id="mediaContainer"></div>
 <div id="bottomControls"></div>
 
 <script>
-/* ---------- CONFIG ---------- */
 const PAGE_SIZE = 20;
-const SEARCH_DEBOUNCE_MS = 200;
-
 let mediaUrls = [];
 let workingList = [];
 let currentIndex = 0;
-let searchTimeout = null;
 
 /* ---------- HELPERS ---------- */
 
 function snapToTop() {
-    requestAnimationFrame(() => {
-        document.documentElement.scrollTop = 0;
-        document.body.scrollTop = 0;
-    });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
 }
 
-function shuffleArray(arr) {
-    for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
+function isTwitter(url) {
+    return url.includes("pbs.twimg.com/media/");
 }
-
-function isImage(url) {
-    return /\.(jpeg|jpg|gif|png|webp)$/i.test(url);
-}
-
-function isVideo(url) {
-    return url.endsWith(".mp4");
-}
-
-/* 🔥 TWITTER IMAGE FIX */
-function getImageSrc(url) {
-    if (url.includes("pbs.twimg.com")) {
-        return "https://images.weserv.nl/?url=" + encodeURIComponent(url.replace(/^https?:\/\//, ""));
-    }
-    return url;
-}
-
-/* ---------- CONTROLS ---------- */
 
 function controlsHTML() {
     return `
         <button class="back-btn" onclick="prevPage()">←</button>
         <button onclick="nextPage()">Next ${PAGE_SIZE}</button>
-        <button onclick="superRandom()">Super Random</button>
     `;
 }
 
 function renderControls() {
-    document.getElementById("topControls").innerHTML = controlsHTML();
-    document.getElementById("bottomControls").innerHTML = controlsHTML();
+    topControls.innerHTML = controlsHTML();
+    bottomControls.innerHTML = controlsHTML();
 }
-
-/* ---------- PAGINATION ---------- */
 
 function nextPage() {
     render();
@@ -163,43 +113,93 @@ function prevPage() {
     snapToTop();
 }
 
-function superRandom() {
-    shuffleArray(workingList);
-    currentIndex = 0;
-    render();
-    snapToTop();
+/* ---------- IMAGE LOAD TEST ---------- */
+
+function createTestImage(url, labelEl) {
+    const attempts = [
+        {
+            name: "direct",
+            src: url,
+            setup: img => {}
+        },
+        {
+            name: "no-referrer",
+            src: url,
+            setup: img => img.referrerPolicy = "no-referrer"
+        },
+        {
+            name: "cors-anon",
+            src: url,
+            setup: img => img.crossOrigin = "anonymous"
+        },
+        {
+            name: "weserv",
+            src: "https://images.weserv.nl/?url=" + encodeURIComponent(url.replace(/^https?:\/\//, "")),
+            setup: img => {}
+        },
+        {
+            name: "weserv-jpg",
+            src: "https://images.weserv.nl/?output=jpg&url=" + encodeURIComponent(url.replace(/^https?:\/\//, "")),
+            setup: img => {}
+        },
+        {
+            name: "weserv-resize",
+            src: "https://images.weserv.nl/?w=1200&url=" + encodeURIComponent(url.replace(/^https?:\/\//, "")),
+            setup: img => {}
+        }
+    ];
+
+    let attemptIndex = 0;
+
+    const img = document.createElement("img");
+    img.loading = "lazy";
+    img.decoding = "async";
+
+    function tryNext() {
+        if (attemptIndex >= attempts.length) {
+            labelEl.textContent = "❌ failed all methods";
+            return;
+        }
+
+        const attempt = attempts[attemptIndex++];
+        img.onload = () => {
+            labelEl.textContent = `loaded via: ${attempt.name}`;
+        };
+        img.onerror = () => {
+            tryNext();
+        };
+
+        attempt.setup(img);
+        img.src = attempt.src;
+    }
+
+    tryNext();
+    return img;
 }
 
 /* ---------- RENDER ---------- */
 
 function render() {
     renderControls();
-
-    const container = document.getElementById("mediaContainer");
-    container.innerHTML = "";
+    mediaContainer.innerHTML = "";
 
     for (let i = 0; i < PAGE_SIZE && currentIndex < workingList.length; i++) {
         const item = workingList[currentIndex];
         const wrapper = document.createElement("div");
         wrapper.className = "media-container";
 
-        const number = document.createElement("div");
-        number.className = "media-number";
-        number.textContent = `#${item.index}`;
-        wrapper.appendChild(number);
+        const num = document.createElement("div");
+        num.className = "media-number";
+        num.textContent = `#${item.index}`;
+        wrapper.appendChild(num);
 
-        if (isVideo(item.url)) {
-            const v = document.createElement("video");
-            v.src = item.url;
-            v.controls = true;
-            v.preload = "none";
-            wrapper.appendChild(v);
+        const label = document.createElement("div");
+        label.className = "load-method";
+        label.textContent = "loading…";
+        wrapper.appendChild(label);
 
-        } else if (isImage(item.url)) {
-            const img = document.createElement("img");
-            img.src = getImageSrc(item.url);
-            img.loading = "lazy";
-            img.decoding = "async";
+        if (isTwitter(item.url)) {
+            const img = createTestImage(item.url, label);
             wrapper.appendChild(img);
         }
 
@@ -209,54 +209,20 @@ function render() {
         link.textContent = item.url;
         wrapper.appendChild(link);
 
-        container.appendChild(wrapper);
+        mediaContainer.appendChild(wrapper);
         currentIndex++;
     }
-}
-
-/* ---------- SEARCH ---------- */
-
-function applySearch() {
-    const q = document.getElementById("searchInput").value.toLowerCase();
-
-    if (!q) {
-        workingList = mediaUrls.map((url, i) => ({ url, index: i + 1 }));
-        currentIndex = 0;
-        render();
-        snapToTop();
-        return;
-    }
-
-    const num = q.replace("#", "");
-
-    workingList = mediaUrls
-        .map((url, i) => ({ url, index: i + 1 }))
-        .filter(item =>
-            item.url.toLowerCase().includes(q) ||
-            item.index.toString() === num
-        );
-
-    currentIndex = 0;
-    render();
-    snapToTop();
-}
-
-function debouncedSearch() {
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(applySearch, SEARCH_DEBOUNCE_MS);
 }
 
 /* ---------- INIT ---------- */
 
 fetch("media.json")
-    .then(res => res.json())
+    .then(r => r.json())
     .then(data => {
         mediaUrls = data;
         workingList = mediaUrls.map((url, i) => ({ url, index: i + 1 }));
         render();
-        snapToTop();
-    })
-    .catch(err => console.error("Failed to load media.json:", err));
+    });
 </script>
 
 </body>
