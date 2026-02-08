@@ -55,7 +55,6 @@ button:hover {
     background-color: #45a049;
 }
 
-/* CRAZY SMALL back button */
 .back-btn {
     font-size: 10px;
     padding: 2px 6px;
@@ -91,9 +90,7 @@ button:hover {
 />
 
 <div id="topControls"></div>
-
 <div id="mediaContainer"></div>
-
 <div id="bottomControls"></div>
 
 <script>
@@ -128,6 +125,14 @@ function isImage(url) {
 
 function isVideo(url) {
     return url.endsWith(".mp4");
+}
+
+/* 🔥 TWITTER IMAGE FIX */
+function getImageSrc(url) {
+    if (url.includes("pbs.twimg.com")) {
+        return "https://images.weserv.nl/?url=" + encodeURIComponent(url.replace(/^https?:\/\//, ""));
+    }
+    return url;
 }
 
 /* ---------- CONTROLS ---------- */
@@ -192,13 +197,9 @@ function render() {
 
         } else if (isImage(item.url)) {
             const img = document.createElement("img");
-            img.src = item.url;
+            img.src = getImageSrc(item.url);
             img.loading = "lazy";
             img.decoding = "async";
-
-            // 🔥 REQUIRED FOR iOS SAFARI + TWITTER IMAGES
-            img.referrerPolicy = "no-referrer";
-
             wrapper.appendChild(img);
         }
 
@@ -245,14 +246,13 @@ function debouncedSearch() {
     searchTimeout = setTimeout(applySearch, SEARCH_DEBOUNCE_MS);
 }
 
-/* ---------- INITIALIZATION ---------- */
+/* ---------- INIT ---------- */
 
 fetch("media.json")
     .then(res => res.json())
     .then(data => {
         mediaUrls = data;
         workingList = mediaUrls.map((url, i) => ({ url, index: i + 1 }));
-        currentIndex = 0;
         render();
         snapToTop();
     })
