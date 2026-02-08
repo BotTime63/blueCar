@@ -3,19 +3,65 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Media Viewer</title>
+<title>Media Viewer1</title>
 
 <style>
 body {
     font-family: Arial, sans-serif;
-    text-align: center;
     background-color: #2c2f38;
     color: #e0e0e0;
-    padding: 20px;
+    margin: 0;
+    padding: 10px;
+}
+
+h1 {
+    margin-top: 5px;
+}
+
+.controls {
+    position: sticky;
+    top: 0;
+    background-color: #2c2f38;
+    padding: 8px;
+    z-index: 100;
+}
+
+.controls.bottom {
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    left: 0;
+}
+
+button {
+    padding: 6px 12px;
+    margin: 3px;
+    font-size: 14px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    background-color: #4CAF50;
+    color: white;
+}
+
+button:hover {
+    background-color: #45a049;
+}
+
+button.back {
+    font-size: 9px;
+    padding: 2px 5px;
+    background-color: #666;
+}
+
+input {
+    padding: 6px;
+    width: 160px;
+    font-size: 14px;
 }
 
 .media-container {
-    margin-bottom: 35px;
+    margin: 20px 0;
 }
 
 .media-number {
@@ -28,232 +74,187 @@ body {
 .media-container video {
     max-width: 100%;
     max-height: 70vh;
-    margin-bottom: 5px;
     border-radius: 10px;
 }
 
 .media-container a {
     display: block;
+    font-size: 11px;
     word-break: break-all;
-    text-decoration: none;
     color: #00aaff;
-    font-size: 12px;
     margin-top: 6px;
 }
 
-button {
-    padding: 10px 20px;
-    margin: 5px;
-    cursor: pointer;
-    font-size: 15px;
-    border: none;
-    background-color: #4CAF50;
-    color: white;
-    border-radius: 5px;
-}
-button:hover {
-    background-color: #45a049;
-}
-
-/* CRAZY SMALL back button */
-.back-btn {
-    font-size: 10px;
-    padding: 2px 6px;
-    opacity: 0.4;
-    background-color: #666;
-}
-.back-btn:hover {
-    opacity: 0.8;
-}
-
-#searchInput {
-    width: 80%;
-    max-width: 420px;
-    padding: 10px;
-    margin: 12px 0;
-    font-size: 16px;
-    border-radius: 6px;
-    border: none;
-    outline: none;
+.notice {
+    font-size: 13px;
+    opacity: 0.85;
+    margin-bottom: 6px;
 }
 </style>
 </head>
 
 <body>
 
+<div class="controls">
+    <button onclick="goBack()" class="back">◀</button>
+    <button onclick="nextPage()">Next 20</button>
+    <button onclick="toggleRandom()">Super Random</button>
+    <input id="searchBox" placeholder="Search # or text">
+    <button onclick="search()">Go</button>
+</div>
+
 <h1>Media Viewer</h1>
-
-<input
-    type="text"
-    id="searchInput"
-    placeholder="Search by URL or number…"
-    oninput="debouncedSearch()"
-/>
-
-<div id="topControls"></div>
 
 <div id="mediaContainer"></div>
 
-<div id="bottomControls"></div>
+<div class="controls bottom">
+    <button onclick="goBack()" class="back">◀</button>
+    <button onclick="nextPage()">Next 20</button>
+    <button onclick="toggleRandom()">Super Random</button>
+</div>
 
 <script>
-/* ---------- CONFIG ---------- */
-const PAGE_SIZE = 20;
-const SEARCH_DEBOUNCE_MS = 200;
-
-let mediaUrls = [];       // All 45k+ links will be loaded from JSON
-let workingList = [];     // Filtered or shuffled list
+let mediaUrls = [];
+let displayOrder = [];
 let currentIndex = 0;
-let searchTimeout = null;
+let isRandom = false;
+const PAGE_SIZE = 20;
 
-/* ---------- HELPERS ---------- */
-
-function snapToTop() {
-    requestAnimationFrame(() => {
-        document.documentElement.scrollTop = 0;
-        document.body.scrollTop = 0;
+/* ---------- Load JSON ---------- */
+fetch("media.json")
+    .then(res => res.json())
+    .then(data => {
+        mediaUrls = data;
+        displayOrder = [...mediaUrls.keys()];
+        render();
     });
+
+/* ---------- Helpers ---------- */
+
+function scrollToTop() {
+    window.scrollTo({ top: 0, behavior: "instant" });
 }
 
-function shuffleArray(arr) {
-    for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
+function isTwitter(url) {
+    return url.includes("pbs.twimg.com");
 }
 
 function isImage(url) {
-    return url.match(/\.(jpeg|jpg|gif|png|webp)$/i);
+    return url.match(/\.(jpg|jpeg|png|gif|webp)$/i);
 }
 
 function isVideo(url) {
     return url.endsWith(".mp4");
 }
 
-/* ---------- CONTROLS ---------- */
-
-function controlsHTML() {
-    return `
-        <button class="back-btn" onclick="prevPage()">←</button>
-        <button onclick="nextPage()">Next ${PAGE_SIZE}</button>
-        <button onclick="superRandom()">Super Random</button>
-    `;
+function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
 }
 
-function renderControls() {
-    document.getElementById("topControls").innerHTML = controlsHTML();
-    document.getElementById("bottomControls").innerHTML = controlsHTML();
-}
-
-/* ---------- PAGINATION ---------- */
-
-function nextPage() {
-    render();
-    snapToTop();
-}
-
-function prevPage() {
-    currentIndex = Math.max(0, currentIndex - PAGE_SIZE * 2);
-    render();
-    snapToTop();
-}
-
-function superRandom() {
-    shuffleArray(workingList);
-    currentIndex = 0;
-    render();
-    snapToTop();
-}
-
-/* ---------- RENDER ---------- */
+/* ---------- Rendering ---------- */
 
 function render() {
-    renderControls();
-
     const container = document.getElementById("mediaContainer");
     container.innerHTML = "";
 
-    for (let i = 0; i < PAGE_SIZE && currentIndex < workingList.length; i++) {
-        const item = workingList[currentIndex];
-        const wrapper = document.createElement("div");
-        wrapper.className = "media-container";
+    for (let i = 0; i < PAGE_SIZE && currentIndex < displayOrder.length; i++) {
+        const index = displayOrder[currentIndex];
+        const url = mediaUrls[index];
 
-        const number = document.createElement("div");
-        number.className = "media-number";
-        number.textContent = `#${item.index}`;
-        wrapper.appendChild(number);
+        const wrap = document.createElement("div");
+        wrap.className = "media-container";
 
-        if (isVideo(item.url)) {
-            const v = document.createElement("video");
-            v.src = item.url;
-            v.controls = true;
-            v.preload = "none";
-            wrapper.appendChild(v);
-        } else if (isImage(item.url)) {
+        const num = document.createElement("div");
+        num.className = "media-number";
+        num.textContent = `#${index + 1}`;
+        wrap.appendChild(num);
+
+        if (isTwitter(url)) {
+            const note = document.createElement("div");
+            note.className = "notice";
+            note.textContent = "⚠️ Blocked by source (Twitter / X)";
+            wrap.appendChild(note);
+        } 
+        else if (isVideo(url)) {
+            const vid = document.createElement("video");
+            vid.src = url;
+            vid.controls = true;
+            wrap.appendChild(vid);
+        } 
+        else if (isImage(url)) {
             const img = document.createElement("img");
-            img.src = item.url;
+            img.src = url;
             img.loading = "lazy";
-            wrapper.appendChild(img);
+            img.referrerPolicy = "no-referrer";
+            img.crossOrigin = "anonymous";
+
+            img.onerror = () => {
+                img.remove();
+                const note = document.createElement("div");
+                note.className = "notice";
+                note.textContent = "⚠️ Image blocked by source";
+                wrap.appendChild(note);
+            };
+
+            wrap.appendChild(img);
         }
 
         const link = document.createElement("a");
-        link.href = item.url;
+        link.href = url;
         link.target = "_blank";
-        link.textContent = item.url;
-        wrapper.appendChild(link);
+        link.textContent = url;
+        wrap.appendChild(link);
 
-        container.appendChild(wrapper);
+        container.appendChild(wrap);
         currentIndex++;
     }
+
+    scrollToTop();
 }
 
-/* ---------- SEARCH ---------- */
+/* ---------- Controls ---------- */
 
-function applySearch() {
-    const q = document.getElementById("searchInput").value.toLowerCase();
+function nextPage() {
+    render();
+}
 
-    if (!q) {
-        workingList = mediaUrls.map((url, i) => ({ url, index: i + 1 }));
+function goBack() {
+    currentIndex = Math.max(0, currentIndex - PAGE_SIZE * 2);
+    render();
+}
+
+function toggleRandom() {
+    if (!isRandom) {
+        shuffle(displayOrder);
         currentIndex = 0;
+        isRandom = true;
+    }
+    render();
+}
+
+function search() {
+    const q = document.getElementById("searchBox").value.toLowerCase();
+    if (!q) return;
+
+    if (!isNaN(q)) {
+        currentIndex = Math.max(0, Number(q) - 1);
         render();
-        snapToTop();
         return;
     }
 
-    const num = q.replace("#", "");
+    const found = displayOrder.findIndex(i =>
+        mediaUrls[i].toLowerCase().includes(q)
+    );
 
-    workingList = mediaUrls
-        .map((url, i) => ({ url, index: i + 1 }))
-        .filter(item =>
-            item.url.toLowerCase().includes(q) ||
-            item.index.toString() === num
-        );
-
-    currentIndex = 0;
-    render();
-    snapToTop();
-}
-
-// debounce to avoid freeze for 45k items
-function debouncedSearch() {
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(applySearch, SEARCH_DEBOUNCE_MS);
-}
-
-/* ---------- INITIALIZATION ---------- */
-
-// Load JSON containing 45k+ links
-fetch("media.json")
-    .then(res => res.json())
-    .then(data => {
-        mediaUrls = data;
-        workingList = mediaUrls.map((url, i) => ({ url, index: i + 1 }));
-        currentIndex = 0;
+    if (found !== -1) {
+        currentIndex = found;
         render();
-        snapToTop();
-    })
-    .catch(err => console.error("Failed to load media.json:", err));
-
+    }
+}
 </script>
+
 </body>
 </html>
