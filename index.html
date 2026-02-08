@@ -38,7 +38,7 @@ body {
     text-decoration: none;
     color: #00aaff;
     font-size: 12px;
-    margin-top: 6px;
+    margin: 6px 0;
 }
 
 button {
@@ -76,12 +76,29 @@ button:hover {
     border: none;
     outline: none;
 }
+
+/* Reminder banner */
+#browserReminder {
+    font-size: 13px;
+    opacity: 0.85;
+    background: #1f222a;
+    border: 1px solid #3a3f4b;
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 15px;
+}
 </style>
 </head>
 
 <body>
 
 <h1>Media Viewer</h1>
+
+<div id="browserReminder">
+    📱 <strong>Mobile tip:</strong> For best results with
+    <code>pbs.twimg.com</code> images, open this site in the
+    <strong>Google Chrome app</strong> on iPhone.
+</div>
 
 <input
     type="text"
@@ -91,9 +108,7 @@ button:hover {
 />
 
 <div id="topControls"></div>
-
 <div id="mediaContainer"></div>
-
 <div id="bottomControls"></div>
 
 <script>
@@ -101,10 +116,11 @@ button:hover {
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 200;
 
-let mediaUrls = [];       // All 45k+ links will be loaded from JSON
-let workingList = [];     // Filtered or shuffled list
+let mediaUrls = [];
+let workingList = [];
 let currentIndex = 0;
 let searchTimeout = null;
+let reminderVisible = true;
 
 /* ---------- HELPERS ---------- */
 
@@ -130,6 +146,14 @@ function isVideo(url) {
     return url.endsWith(".mp4");
 }
 
+function hideReminderOnce() {
+    if (reminderVisible) {
+        const r = document.getElementById("browserReminder");
+        if (r) r.remove();
+        reminderVisible = false;
+    }
+}
+
 /* ---------- CONTROLS ---------- */
 
 function controlsHTML() {
@@ -148,17 +172,20 @@ function renderControls() {
 /* ---------- PAGINATION ---------- */
 
 function nextPage() {
+    hideReminderOnce();
     render();
     snapToTop();
 }
 
 function prevPage() {
+    hideReminderOnce();
     currentIndex = Math.max(0, currentIndex - PAGE_SIZE * 2);
     render();
     snapToTop();
 }
 
 function superRandom() {
+    hideReminderOnce();
     shuffleArray(workingList);
     currentIndex = 0;
     render();
@@ -183,24 +210,26 @@ function render() {
         number.textContent = `#${item.index}`;
         wrapper.appendChild(number);
 
+        /* LINK ABOVE MEDIA */
+        const link = document.createElement("a");
+        link.href = item.url;
+        link.target = "_blank";
+        link.textContent = item.url;
+        wrapper.appendChild(link);
+
         if (isVideo(item.url)) {
             const v = document.createElement("video");
             v.src = item.url;
             v.controls = true;
             v.preload = "none";
             wrapper.appendChild(v);
+
         } else if (isImage(item.url)) {
             const img = document.createElement("img");
             img.src = item.url;
             img.loading = "lazy";
             wrapper.appendChild(img);
         }
-
-        const link = document.createElement("a");
-        link.href = item.url;
-        link.target = "_blank";
-        link.textContent = item.url;
-        wrapper.appendChild(link);
 
         container.appendChild(wrapper);
         currentIndex++;
@@ -210,6 +239,8 @@ function render() {
 /* ---------- SEARCH ---------- */
 
 function applySearch() {
+    hideReminderOnce();
+
     const q = document.getElementById("searchInput").value.toLowerCase();
 
     if (!q) {
@@ -234,26 +265,23 @@ function applySearch() {
     snapToTop();
 }
 
-// debounce to avoid freeze for 45k items
 function debouncedSearch() {
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(applySearch, SEARCH_DEBOUNCE_MS);
 }
 
-/* ---------- INITIALIZATION ---------- */
+/* ---------- INIT ---------- */
 
-// Load JSON containing 45k+ links
 fetch("media.json")
     .then(res => res.json())
     .then(data => {
         mediaUrls = data;
         workingList = mediaUrls.map((url, i) => ({ url, index: i + 1 }));
-        currentIndex = 0;
         render();
         snapToTop();
     })
     .catch(err => console.error("Failed to load media.json:", err));
-
 </script>
+
 </body>
 </html>
