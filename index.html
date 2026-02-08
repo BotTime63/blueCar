@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Media Viewer</title>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    background-color: #2c2f38;
+    color: #e0e0e0;
+    padding: 20px;
+}
+
+.media-container {
+    margin-bottom: 35px;
+}
+
+.media-number {
+    font-size: 12px;
+    opacity: 0.6;
+    margin-bottom: 4px;
+}
+
+.media-container img,
+.media-container video {
+    max-width: 100%;
+    max-height: 70vh;
+    margin-bottom: 5px;
+    border-radius: 10px;
+}
+
+.media-container a {
+    display: block;
+    word-break: break-all;
+    text-decoration: none;
+    color: #00aaff;
+    font-size: 12px;
+    margin-top: 6px;
+}
+
+button {
+    padding: 10px 20px;
+    margin: 5px;
+    cursor: pointer;
+    font-size: 15px;
+    border: none;
+    background-color: #4CAF50;
+    color: white;
+    border-radius: 5px;
+}
+button:hover {
+    background-color: #45a049;
+}
+
+/* CRAZY SMALL back button */
+.back-btn {
+    font-size: 10px;
+    padding: 2px 6px;
+    opacity: 0.4;
+    background-color: #666;
+}
+.back-btn:hover {
+    opacity: 0.8;
+}
+
+#searchInput {
+    width: 80%;
+    max-width: 420px;
+    padding: 10px;
+    margin: 12px 0;
+    font-size: 16px;
+    border-radius: 6px;
+    border: none;
+    outline: none;
+}
+</style>
+</head>
+
+<body>
+
+<h1>Media Viewer</h1>
+
+<input
+    type="text"
+    id="searchInput"
+    placeholder="Search by URL or number…"
+    oninput="debouncedSearch()"
+/>
+
+<div id="topControls"></div>
+
+<div id="mediaContainer"></div>
+
+<div id="bottomControls"></div>
+
+<script>
+/* ---------- CONFIG ---------- */
+const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 200;
+
+let mediaUrls = [];       // All 45k+ links will be loaded from JSON
+let workingList = [];     // Filtered or shuffled list
+let currentIndex = 0;
+let searchTimeout = null;
+
+/* ---------- HELPERS ---------- */
+
+function snapToTop() {
+    requestAnimationFrame(() => {
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+    });
+}
+
+function shuffleArray(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+}
+
+function isImage(url) {
+    return url.match(/\.(jpeg|jpg|gif|png|webp)$/i);
+}
+
+function isVideo(url) {
+    return url.endsWith(".mp4");
+}
+
+/* ---------- CONTROLS ---------- */
+
+function controlsHTML() {
+    return `
+        <button class="back-btn" onclick="prevPage()">←</button>
+        <button onclick="nextPage()">Next ${PAGE_SIZE}</button>
+        <button onclick="superRandom()">Super Random</button>
+    `;
+}
+
+function renderControls() {
+    document.getElementById("topControls").innerHTML = controlsHTML();
+    document.getElementById("bottomControls").innerHTML = controlsHTML();
+}
+
+/* ---------- PAGINATION ---------- */
+
+function nextPage() {
+    render();
+    snapToTop();
+}
+
+function prevPage() {
+    currentIndex = Math.max(0, currentIndex - PAGE_SIZE * 2);
+    render();
+    snapToTop();
+}
+
+function superRandom() {
+    shuffleArray(workingList);
+    currentIndex = 0;
+    render();
+    snapToTop();
+}
+
+/* ---------- RENDER ---------- */
+
+function render() {
+    renderControls();
+
+    const container = document.getElementById("mediaContainer");
+    container.innerHTML = "";
+
+    for (let i = 0; i < PAGE_SIZE && currentIndex < workingList.length; i++) {
+        const item = workingList[currentIndex];
+        const wrapper = document.createElement("div");
+        wrapper.className = "media-container";
+
+        const number = document.createElement("div");
+        number.className = "media-number";
+        number.textContent = `#${item.index}`;
+        wrapper.appendChild(number);
+
+        if (isVideo(item.url)) {
+            const v = document.createElement("video");
+            v.src = item.url;
+            v.controls = true;
+            v.preload = "none";
+            wrapper.appendChild(v);
+        } else if (isImage(item.url)) {
+            const img = document.createElement("img");
+            img.src = item.url;
+            img.loading = "lazy";
+            wrapper.appendChild(img);
+        }
+
+        const link = document.createElement("a");
+        link.href = item.url;
+        link.target = "_blank";
+        link.textContent = item.url;
+        wrapper.appendChild(link);
+
+        container.appendChild(wrapper);
+        currentIndex++;
+    }
+}
+
+/* ---------- SEARCH ---------- */
+
+function applySearch() {
+    const q = document.getElementById("searchInput").value.toLowerCase();
+
+    if (!q) {
+        workingList = mediaUrls.map((url, i) => ({ url, index: i + 1 }));
+        currentIndex = 0;
+        render();
+        snapToTop();
+        return;
+    }
+
+    const num = q.replace("#", "");
+
+    workingList = mediaUrls
+        .map((url, i) => ({ url, index: i + 1 }))
+        .filter(item =>
+            item.url.toLowerCase().includes(q) ||
+            item.index.toString() === num
+        );
+
+    currentIndex = 0;
+    render();
+    snapToTop();
+}
+
+// debounce to avoid freeze for 45k items
+function debouncedSearch() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(applySearch, SEARCH_DEBOUNCE_MS);
+}
+
+/* ---------- INITIALIZATION ---------- */
+
+// Load JSON containing 45k+ links
+fetch("media.json")
+    .then(res => res.json())
+    .then(data => {
+        mediaUrls = data;
+        workingList = mediaUrls.map((url, i) => ({ url, index: i + 1 }));
+        currentIndex = 0;
+        render();
+        snapToTop();
+    })
+    .catch(err => console.error("Failed to load media.json:", err));
+
+</script>
+</body>
+</html>
