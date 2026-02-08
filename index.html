@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Media Viewer1</title>
+<title>Media Viewer</title>
 
 <style>
 body {
@@ -14,9 +14,7 @@ body {
     padding: 10px;
 }
 
-h1 {
-    margin-top: 5px;
-}
+h1 { margin-top: 6px; }
 
 .controls {
     position: sticky;
@@ -44,10 +42,6 @@ button {
     color: white;
 }
 
-button:hover {
-    background-color: #45a049;
-}
-
 button.back {
     font-size: 9px;
     padding: 2px 5px;
@@ -57,7 +51,6 @@ button.back {
 input {
     padding: 6px;
     width: 160px;
-    font-size: 14px;
 }
 
 .media-container {
@@ -96,7 +89,7 @@ input {
 <body>
 
 <div class="controls">
-    <button onclick="goBack()" class="back">◀</button>
+    <button class="back" onclick="goBack()">◀</button>
     <button onclick="nextPage()">Next 20</button>
     <button onclick="toggleRandom()">Super Random</button>
     <input id="searchBox" placeholder="Search # or text">
@@ -105,10 +98,10 @@ input {
 
 <h1>Media Viewer</h1>
 
-<div id="mediaContainer"></div>
+<div id="mediaContainer">Loading media…</div>
 
 <div class="controls bottom">
-    <button onclick="goBack()" class="back">◀</button>
+    <button class="back" onclick="goBack()">◀</button>
     <button onclick="nextPage()">Next 20</button>
     <button onclick="toggleRandom()">Super Random</button>
 </div>
@@ -120,19 +113,31 @@ let currentIndex = 0;
 let isRandom = false;
 const PAGE_SIZE = 20;
 
-/* ---------- Load JSON ---------- */
-fetch("media.json")
-    .then(res => res.json())
+/* ---------- Load media.json safely ---------- */
+fetch("./media.json")
+    .then(res => {
+        if (!res.ok) throw new Error("Failed to load media.json");
+        return res.json();
+    })
     .then(data => {
+        if (!Array.isArray(data) || data.length === 0) {
+            throw new Error("media.json is empty or invalid");
+        }
+
         mediaUrls = data;
-        displayOrder = [...mediaUrls.keys()];
+        displayOrder = Array.from({ length: mediaUrls.length }, (_, i) => i);
         render();
+    })
+    .catch(err => {
+        document.getElementById("mediaContainer").innerHTML =
+            "❌ Failed to load media list.<br>Check media.json path or size.<br><br>" +
+            err.message;
+        console.error(err);
     });
 
 /* ---------- Helpers ---------- */
-
 function scrollToTop() {
-    window.scrollTo({ top: 0, behavior: "instant" });
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
 }
 
 function isTwitter(url) {
@@ -140,36 +145,35 @@ function isTwitter(url) {
 }
 
 function isImage(url) {
-    return url.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+    return /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
 }
 
 function isVideo(url) {
     return url.endsWith(".mp4");
 }
 
-function shuffle(array) {
-    for (let i = array.length - 1; i > 0; i--) {
+function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
+        [arr[i], arr[j]] = [arr[j], arr[i]];
     }
 }
 
 /* ---------- Rendering ---------- */
-
 function render() {
     const container = document.getElementById("mediaContainer");
     container.innerHTML = "";
 
     for (let i = 0; i < PAGE_SIZE && currentIndex < displayOrder.length; i++) {
-        const index = displayOrder[currentIndex];
-        const url = mediaUrls[index];
+        const idx = displayOrder[currentIndex];
+        const url = mediaUrls[idx];
 
         const wrap = document.createElement("div");
         wrap.className = "media-container";
 
         const num = document.createElement("div");
         num.className = "media-number";
-        num.textContent = `#${index + 1}`;
+        num.textContent = `#${idx + 1}`;
         wrap.appendChild(num);
 
         if (isTwitter(url)) {
@@ -177,13 +181,13 @@ function render() {
             note.className = "notice";
             note.textContent = "⚠️ Blocked by source (Twitter / X)";
             wrap.appendChild(note);
-        } 
+        }
         else if (isVideo(url)) {
-            const vid = document.createElement("video");
-            vid.src = url;
-            vid.controls = true;
-            wrap.appendChild(vid);
-        } 
+            const v = document.createElement("video");
+            v.src = url;
+            v.controls = true;
+            wrap.appendChild(v);
+        }
         else if (isImage(url)) {
             const img = document.createElement("img");
             img.src = url;
@@ -193,10 +197,10 @@ function render() {
 
             img.onerror = () => {
                 img.remove();
-                const note = document.createElement("div");
-                note.className = "notice";
-                note.textContent = "⚠️ Image blocked by source";
-                wrap.appendChild(note);
+                const n = document.createElement("div");
+                n.className = "notice";
+                n.textContent = "⚠️ Image blocked by source";
+                wrap.appendChild(n);
             };
 
             wrap.appendChild(img);
@@ -216,7 +220,6 @@ function render() {
 }
 
 /* ---------- Controls ---------- */
-
 function nextPage() {
     render();
 }
