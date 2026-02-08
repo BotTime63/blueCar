@@ -101,8 +101,8 @@ button:hover {
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 200;
 
-let mediaUrls = [];       // All 45k+ links will be loaded from JSON
-let workingList = [];     // Filtered or shuffled list
+let mediaUrls = [];
+let workingList = [];
 let currentIndex = 0;
 let searchTimeout = null;
 
@@ -123,7 +123,7 @@ function shuffleArray(arr) {
 }
 
 function isImage(url) {
-    return url.match(/\.(jpeg|jpg|gif|png|webp)$/i);
+    return /\.(jpeg|jpg|gif|png|webp)$/i.test(url);
 }
 
 function isVideo(url) {
@@ -189,10 +189,16 @@ function render() {
             v.controls = true;
             v.preload = "none";
             wrapper.appendChild(v);
+
         } else if (isImage(item.url)) {
             const img = document.createElement("img");
             img.src = item.url;
             img.loading = "lazy";
+            img.decoding = "async";
+
+            // 🔥 REQUIRED FOR iOS SAFARI + TWITTER IMAGES
+            img.referrerPolicy = "no-referrer";
+
             wrapper.appendChild(img);
         }
 
@@ -234,7 +240,6 @@ function applySearch() {
     snapToTop();
 }
 
-// debounce to avoid freeze for 45k items
 function debouncedSearch() {
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(applySearch, SEARCH_DEBOUNCE_MS);
@@ -242,7 +247,6 @@ function debouncedSearch() {
 
 /* ---------- INITIALIZATION ---------- */
 
-// Load JSON containing 45k+ links
 fetch("media.json")
     .then(res => res.json())
     .then(data => {
@@ -253,7 +257,7 @@ fetch("media.json")
         snapToTop();
     })
     .catch(err => console.error("Failed to load media.json:", err));
-
 </script>
+
 </body>
 </html>
